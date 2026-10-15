@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sudoku • BooksWagon</title>
+  <!-- Choose the theme before the first paint so the page never flashes the wrong one. -->
+  <script>
+    (function () {
+      var theme = "light";
+      try {
+        var saved = localStorage.getItem("sudoku-theme");
+        if (saved === "light" || saved === "dark") theme = saved;
+        else if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) theme = "dark";
+      } catch (e) {}
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <header class="top">
+      <h1 class="wordmark">S U D O K U</h1>
+      <div class="top-actions">
+        <!-- Play = the original game, no unsolicited help. Learn = same game, plus a tutor.
+             Switching never touches the puzzle, the clock, the mistakes or the hints. -->
+        <div id="mode" class="seg" role="group" aria-label="Game mode">
+          <button type="button" class="seg-btn" data-mode="play" aria-pressed="true">Play</button>
+          <button type="button" class="seg-btn" data-mode="learn" aria-pressed="false">Learn</button>
+        </div>
+        <button id="tutor-open" class="icon-btn" type="button" hidden
+                aria-controls="tutor" aria-expanded="false" aria-label="Open the Sudoku Tutor" title="Open the Sudoku Tutor">
+          <svg class="icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path d="M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9.5L5 20.2V16H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" fill="currentColor"/>
+          </svg>
+          <span id="tutor-badge" class="badge" hidden aria-hidden="true">0</span>
+        </button>
+        <button id="theme" class="icon-btn" type="button"
+                aria-label="Switch to dark mode" title="Switch to dark mode">
+          <svg class="icon icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z" fill="currentColor"/>
+          </svg>
+          <svg class="icon icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="4.2" fill="currentColor"/>
+            <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/>
+            </g>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- ============ The puzzle ============ -->
+      <section class="play" aria-label="Puzzle">
+        <div class="scoreline" role="group" aria-label="Game status">
+          <div class="clock">
+            <span class="label">Time</span>
+            <span id="timer" class="timer" role="timer">00:00</span>
+            <span id="level" class="sub"></span>
+          </div>
+          <div class="tally" id="mistake-tally">
+            <span class="label">Mistakes <b id="mistakes-text">0/3</b></span>
+            <span id="mistake-boxes" class="boxes" aria-hidden="true"></span>
+          </div>
+          <div class="tally" id="hint-tally">
+            <span class="label">Hints <b id="hints-text">4 left</b></span>
+            <span id="hint-dots" class="dots" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <div id="frame" class="frame">
+          <div id="board" class="board" role="grid" aria-label="Sudoku grid"></div>
+          <div id="pause-overlay" class="pause" hidden>
+            <div class="pause-card">
+              <p class="pause-title">Game paused</p>
+              <p id="pause-note" class="pause-note"></p>
+              <button id="resume" class="btn primary" type="button">Resume</button>
+            </div>
+          </div>
+        </div>
+
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+
+        <div id="numpad" class="numpad" role="group" aria-label="Number pad"></div>
+
+        <!-- Under the pad, so the pad never moves when a hint appears, and the words
+             stay on screen on a phone, where the controls column is below the fold. -->
+        <div id="hint-note" class="note" hidden aria-live="polite">
+          <p id="hint-title" class="note-title"></p>
+          <p id="hint-text" class="note-text"></p>
+        </div>
+      </section>
+
+      <!-- ============ Controls ============ -->
+      <section class="controls" aria-label="Controls">
+        <div class="tools">
+          <button id="undo"  class="btn" type="button">Undo</button>
+          <button id="erase" class="btn" type="button">Erase</button>
+          <button id="hint"  class="btn accent" type="button">Hint</button>
+          <button id="pause" class="btn" type="button">Pause</button>
+        </div>
+
+        <div class="newgame">
+          <label class="label" for="difficulty">Difficulty</label>
+          <div class="newgame-row">
+            <select id="difficulty">
+              <option value="Easy">Easy</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Hard">Hard</option>
+            </select>
+            <button id="new" class="btn primary" type="button">New game</button>
+          </div>
+        </div>
+
+        <div class="secondary">
+          <button id="check" class="btn quiet" type="button">Check solution</button>
+          <button id="reset" class="btn quiet" type="button">Reset board</button>
+          <button id="solve" class="btn quiet" type="button">Give up and solve</button>
+        </div>
+
+        <ul class="legend" aria-label="Legend">
+          <li><span class="key key-clue">5</span>Printed clue</li>
+          <li><span class="key key-pen">5</span>Your entry</li>
+          <li><span class="key key-hint">5</span>Revealed by a hint</li>
+        </ul>
+        <p class="keys">Arrow keys move. Digits 1 to 9 fill a cell. Backspace erases. Ctrl+Z undoes.</p>
+      </section>
+
+      <!-- ============ Sudoku Tutor (Learn mode only) ============ -->
+      <aside id="tutor" class="tutor" aria-labelledby="tutor-title" data-open="false">
+        <div class="tutor-head">
+          <h2 id="tutor-title" class="tutor-title">Sudoku Tutor</h2>
+          <button id="tutor-clear" class="btn quiet small" type="button">New conversation</button>
+          <button id="tutor-close" class="icon-btn small" type="button" aria-label="Close the tutor" title="Close the tutor">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+              <path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+            </svg>
+          </button>
+        </div>
+        <div id="tutor-log" class="tutor-log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"
+             aria-label="Conversation with the tutor"></div>
+        <div id="tutor-chips" class="tutor-chips" role="group" aria-label="Suggested questions"></div>
+        <form id="tutor-form" class="tutor-form" autocomplete="off">
+          <label class="sr" for="tutor-input">Ask the tutor a question</label>
+          <input id="tutor-input" class="tutor-input" type="text" maxlength="300" enterkeyhint="send"
+                 placeholder="Ask about your board">
+          <button id="tutor-send" class="btn primary" type="submit">Send</button>
+        </form>
+        <p id="tutor-foot" class="tutor-foot"></p>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="dialog" aria-labelledby="dlg-title">
+    <h2 id="dlg-title" class="dlg-title"></h2>
+    <div id="dlg-body" class="dlg-body"></div>
+    <div id="dlg-actions" class="dlg-actions"></div>
+  </dialog>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
